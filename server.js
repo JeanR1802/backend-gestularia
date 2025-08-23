@@ -5,10 +5,13 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 
-const prisma = new PrismaClient();
+// Evita que Prisma se reinicie en cada invocación serverless
+const prisma = global.prisma || new PrismaClient();
+if (process.env.NODE_ENV !== 'production') global.prisma = prisma;
+
 const app = express();
 
-// Configuración de CORS
+// Configuración de CORS para tu frontend
 app.use(cors({
   origin: 'https://frontendg.vercel.app',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
@@ -31,7 +34,7 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// --- RUTAS DE AUTENTICACIÓN ---
+// ------------------------ RUTAS DE AUTENTICACIÓN ------------------------
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -51,9 +54,8 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      return res.status(400).json({ error: 'Credenciales inválidas.' });
-    }
+    if (!user || !(await bcrypt.compare(password, user.password))) return res.status(400).json({ error: 'Credenciales inválidas.' });
+
     const accessToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '1d' });
     res.json({ accessToken });
   } catch (error) {
@@ -62,7 +64,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// --- RUTAS DE TIENDA ---
+// ------------------------ RUTAS DE TIENDA ------------------------
 app.get('/api/store', authenticateToken, async (req, res) => {
   try {
     const store = await prisma.store.findUnique({ where: { userId: req.user.userId }, include: { products: true } });
@@ -126,7 +128,7 @@ app.put('/api/store/template', authenticateToken, async (req, res) => {
   }
 });
 
-// --- RUTAS DE PRODUCTOS ---
+// ------------------------ RUTAS DE PRODUCTOS ------------------------
 app.post('/api/products', authenticateToken, async (req, res) => {
   const { name, price, imageUrl, storeId } = req.body;
 
@@ -156,7 +158,7 @@ app.delete('/api/products/:productId', authenticateToken, async (req, res) => {
   }
 });
 
-// --- RUTA PÚBLICA ---
+// ------------------------ RUTA PÚBLICA ------------------------
 app.get('/api/tiendas/:slug', async (req, res) => {
   try {
     const { slug } = req.params;
@@ -168,5 +170,5 @@ app.get('/api/tiendas/:slug', async (req, res) => {
   }
 });
 
-// Exporta la app para serverless
+// ------------------------ EXPORT PARA SERVERLESS ------------------------
 module.exports = app;
