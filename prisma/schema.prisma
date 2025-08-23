@@ -1,0 +1,46 @@
+// This is your Prisma schema file
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id       String @id @default(cuid())
+  email    String @unique
+  password String
+  store    Store?
+}
+
+model Store {
+  id                String    @id @default(cuid())
+  name              String
+  slug              String    @unique
+  status            String    @default("NOT_BUILT")
+  isMaintenanceMode Boolean   @default(false)
+  template          String?   @default("moderno")
+  heroTitle         String?   @default("Bienvenidos a mi Tienda")
+  heroDescription   String?   @default("Los mejores productos, a los mejores precios.")
+  primaryColor      String?   @default("#0f172a")
+
+  user              User      @relation(fields: [userId], references: [id])
+  userId            String    @unique
+  products          Product[]
+}
+
+model Product {
+  id      String @id @default(cuid())
+  name    String
+  price   Float
+  
+  // --- ¡NUEVO CAMPO! ---
+  // Guardará la URL de la imagen del producto.
+  imageUrl String?
+
+  store   Store  @relation(fields: [storeId], references: [id])
+  storeId String
+}
