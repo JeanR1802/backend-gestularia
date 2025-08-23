@@ -13,12 +13,16 @@ const app = express();
 
 // Configuración de CORS para tu frontend
 app.use(cors({
-  origin: 'https://frontendg.vercel.app',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  origin: 'https://frontendg.vercel.app', // tu frontend en Vercel
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
 
+// Middleware para manejar preflight requests
+app.options('*', cors());
+
+// Body parser
 app.use(express.json());
 
 // Middleware de autenticación
