@@ -1,6 +1,5 @@
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
@@ -11,23 +10,18 @@ if (process.env.NODE_ENV !== 'production') global.prisma = prisma;
 const app = express();
 
 // ---- CORS CONFIGURACIÓN ----
-const allowedOrigins = ['https://frontendg.vercel.app']; // tu frontend en Vercel
-app.use(cors({
-  origin: function(origin, callback){
-    if(!origin) return callback(null, true); // postman o server-to-server
-    if(allowedOrigins.indexOf(origin) === -1){
-      const msg = 'El CORS no permite este origen';
-      return callback(new Error(msg), false);
-    }
-    return callback(null, true);
-  },
-  credentials: true,
-  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
-// Middleware para OPTIONS (preflight)
-app.options('*', cors());
+const allowedOrigins = ['https://frontendg.vercel.app'];
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 
 // Body parser
 app.use(express.json());
@@ -181,4 +175,5 @@ app.get('/api/tiendas/:slug', async (req, res) => {
   }
 });
 
+// ------------------------ EXPORT PARA SERVERLESS ----
 module.exports = app;
