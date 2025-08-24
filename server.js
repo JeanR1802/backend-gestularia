@@ -12,7 +12,7 @@ const app = express();
 
 // ---- CORS CONFIGURACIÓN (CORREGIDA) ----
 const corsOptions = {
-  origin: 'https://frontendg.vercel.app', // Origen permitido
+  origin: 'https://gestularia.com', // Origen permitido
   optionsSuccessStatus: 200
 };
 app.use(cors(corsOptions));
