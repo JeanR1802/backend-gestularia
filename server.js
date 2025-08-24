@@ -5,27 +5,34 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 
-// Evita reinicio de Prisma en cada invocación serverless
 const prisma = global.prisma || new PrismaClient();
 if (process.env.NODE_ENV !== 'production') global.prisma = prisma;
 
 const app = express();
 
-// ------------------- CORS -------------------
+// ---- CORS CONFIGURACIÓN ----
+const allowedOrigins = ['https://frontendg.vercel.app']; // tu frontend en Vercel
 app.use(cors({
-  origin: 'https://frontendg.vercel.app', // tu frontend en Vercel
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization'],
-  credentials: true
+  origin: function(origin, callback){
+    if(!origin) return callback(null, true); // postman o server-to-server
+    if(allowedOrigins.indexOf(origin) === -1){
+      const msg = 'El CORS no permite este origen';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Middleware para manejar preflight requests
+// Middleware para OPTIONS (preflight)
 app.options('*', cors());
 
 // Body parser
 app.use(express.json());
 
-// ------------------- Middleware de autenticación -------------------
+// Middleware de autenticación
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -38,7 +45,7 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// ------------------- RUTAS DE AUTENTICACIÓN -------------------
+// ------------------------ RUTAS DE AUTENTICACIÓN ------------------------
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -68,7 +75,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// ------------------- RUTAS DE TIENDA -------------------
+// ------------------------ RUTAS DE TIENDA ------------------------
 app.get('/api/store', authenticateToken, async (req, res) => {
   try {
     const store = await prisma.store.findUnique({ where: { userId: req.user.userId }, include: { products: true } });
@@ -132,7 +139,7 @@ app.put('/api/store/template', authenticateToken, async (req, res) => {
   }
 });
 
-// ------------------- RUTAS DE PRODUCTOS -------------------
+// ------------------------ RUTAS DE PRODUCTOS ------------------------
 app.post('/api/products', authenticateToken, async (req, res) => {
   const { name, price, imageUrl, storeId } = req.body;
 
@@ -162,7 +169,7 @@ app.delete('/api/products/:productId', authenticateToken, async (req, res) => {
   }
 });
 
-// ------------------- RUTA PÚBLICA -------------------
+// ------------------------ RUTA PÚBLICA ------------------------
 app.get('/api/tiendas/:slug', async (req, res) => {
   try {
     const { slug } = req.params;
