@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const cors = require('cors'); // <-- IMPORTANTE: Añadir cors
+const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = global.prisma || new PrismaClient();
@@ -10,17 +10,17 @@ if (process.env.NODE_ENV !== 'production') global.prisma = prisma;
 
 const app = express();
 
-// ---- CORS CONFIGURACIÓN (CORREGIDA) ----
+// --- CONFIGURACIÓN CORS ---
 const corsOptions = {
-  origin: 'https://gestularia.com', // Origen permitido
+  origin: 'https://gestularia.com',
   optionsSuccessStatus: 200
 };
 app.use(cors(corsOptions));
 
-// Body parser
+// --- BODY PARSER ---
 app.use(express.json());
 
-// Middleware de autenticación
+// --- MIDDLEWARE AUTENTICACIÓN ---
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -44,7 +44,7 @@ app.post('/api/auth/register', async (req, res) => {
     res.status(201).json({ id: user.id, email: user.email });
   } catch (error) {
     if (error.code === 'P2002') return res.status(409).json({ error: 'El email ya está en uso.' });
-    console.error("ERROR EN REGISTER:", error);
+    console.error("ERROR REGISTER:", error);
     res.status(500).json({ error: 'No se pudo registrar el usuario.' });
   }
 });
@@ -58,7 +58,7 @@ app.post('/api/auth/login', async (req, res) => {
     const accessToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '1d' });
     res.json({ accessToken });
   } catch (error) {
-    console.error("ERROR EN LOGIN:", error);
+    console.error("ERROR LOGIN:", error);
     res.status(500).send();
   }
 });
@@ -93,7 +93,7 @@ app.post('/api/store', authenticateToken, async (req, res) => {
     res.status(201).json(newStore);
   } catch (error) {
     if (error.code === 'P2002') return res.status(409).json({ error: 'Este usuario ya tiene una tienda.' });
-    console.error("ERROR EN CREATE STORE:", error);
+    console.error("ERROR CREATE STORE:", error);
     res.status(500).json({ error: 'No se pudo crear la tienda.' });
   }
 });
@@ -157,14 +157,21 @@ app.delete('/api/products/:productId', authenticateToken, async (req, res) => {
   }
 });
 
-// ------------------------ RUTA PÚBLICA ------------------------
+// ------------------------ RUTA PÚBLICA CORREGIDA ------------------------
 app.get('/api/tiendas/:slug', async (req, res) => {
   try {
     const { slug } = req.params;
-    const store = await prisma.store.findUnique({ where: { slug, status: 'BUILT' }, include: { products: true } });
+
+    // Cambiado findUnique -> findFirst para filtrar por slug + status
+    const store = await prisma.store.findFirst({
+      where: { slug, status: 'BUILT' },
+      include: { products: true }
+    });
+
     if (store) res.json(store);
     else res.status(404).json({ error: 'Tienda no encontrada o no publicada.' });
   } catch (error) {
+    console.error("ERROR GET TIENDA:", error);
     res.status(500).json({ error: 'Error al obtener la tienda.' });
   }
 });
