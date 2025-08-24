@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const cors = require('cors'); // <-- IMPORTANTE: Añadir cors
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = global.prisma || new PrismaClient();
@@ -9,19 +10,12 @@ if (process.env.NODE_ENV !== 'production') global.prisma = prisma;
 
 const app = express();
 
-// ---- CORS CONFIGURACIÓN ----
-const allowedOrigins = ['https://frontendg.vercel.app'];
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  if (req.method === 'OPTIONS') return res.sendStatus(204);
-  next();
-});
+// ---- CORS CONFIGURACIÓN (CORREGIDA) ----
+const corsOptions = {
+  origin: 'https://frontendg.vercel.app', // Origen permitido
+  optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
 
 // Body parser
 app.use(express.json());
