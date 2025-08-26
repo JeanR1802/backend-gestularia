@@ -11,10 +11,26 @@ if (process.env.NODE_ENV !== 'production') global.prisma = prisma;
 const app = express();
 
 // --- CONFIGURACIÓN CORS ---
+const allowedOrigins = [
+  'https://gestularia.com',
+  'https://www.gestularia.com',
+  'http://localhost:3000' // desarrollo local
+];
+
 const corsOptions = {
-  origin: 'https://gestularia.com',
+  origin: function(origin, callback) {
+    // permite requests sin origen (ej. Postman o server-side)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true, // necesario si usas cookies o headers Authorization
   optionsSuccessStatus: 200
 };
+
 app.use(cors(corsOptions));
 
 // --- BODY PARSER ---
@@ -157,12 +173,11 @@ app.delete('/api/products/:productId', authenticateToken, async (req, res) => {
   }
 });
 
-// ------------------------ RUTA PÚBLICA CORREGIDA ------------------------
+// ------------------------ RUTA PÚBLICA ------------------------
 app.get('/api/tiendas/:slug', async (req, res) => {
   try {
     const { slug } = req.params;
 
-    // Cambiado findUnique -> findFirst para filtrar por slug + status
     const store = await prisma.store.findFirst({
       where: { slug, status: 'BUILT' },
       include: { products: true }
