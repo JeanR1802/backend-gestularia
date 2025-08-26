@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
+const { VercelClient } = require('@vercel/client');
 
 const prisma = global.prisma || new PrismaClient();
 if (process.env.NODE_ENV !== 'production') global.prisma = prisma;
@@ -19,7 +20,6 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function(origin, callback) {
-    // permite requests sin origen (ej. Postman o server-side)
     if (!origin) return callback(null, true);
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
@@ -27,16 +27,14 @@ const corsOptions = {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true, // necesario si usas cookies o headers Authorization
+  credentials: true,
   optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
-
-// --- BODY PARSER ---
 app.use(express.json());
 
-// --- MIDDLEWARE AUTENTICACIÓN ---
+// --- AUTENTICACIÓN ---
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -48,6 +46,9 @@ const authenticateToken = (req, res, next) => {
     next();
   });
 };
+
+// --- CLIENTE VERCEL ---
+const vercel = new VercelClient({ token: process.env.VERCEL_TOKEN });
 
 // ------------------------ RUTAS DE AUTENTICACIÓN ------------------------
 app.post('/api/auth/register', async (req, res) => {
@@ -90,6 +91,7 @@ app.get('/api/store', authenticateToken, async (req, res) => {
   }
 });
 
+// --- CREAR TIENDA Y SUBDOMINIO VERCEL ---
 app.post('/api/store', authenticateToken, async (req, res) => {
   try {
     const { name } = req.body;
@@ -105,8 +107,22 @@ app.post('/api/store', authenticateToken, async (req, res) => {
       storeExists = await prisma.store.findUnique({ where: { slug: finalSlug } });
     }
 
+    // --- Crear tienda en BD ---
     const newStore = await prisma.store.create({ data: { name, slug: finalSlug, userId } });
-    res.status(201).json(newStore);
+
+    // --- Crear alias/subdominio en Vercel ---
+    const aliasDomain = `${finalSlug}.gestularia.com`;
+    try {
+      await vercel.projects.createAlias({
+        projectId: process.env.VERCEL_PROJECT_ID, // reemplaza con tu Project ID
+        alias: aliasDomain
+      });
+      console.log(`Subdominio creado: ${aliasDomain}`);
+    } catch (vercelError) {
+      console.error("Error creando subdominio en Vercel:", vercelError);
+    }
+
+    res.status(201).json({ ...newStore, subdomain: aliasDomain });
   } catch (error) {
     if (error.code === 'P2002') return res.status(409).json({ error: 'Este usuario ya tiene una tienda.' });
     console.error("ERROR CREATE STORE:", error);
