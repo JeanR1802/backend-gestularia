@@ -4,7 +4,9 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
-const { VercelClient } = require('@vercel/client');
+
+// --- CORRECCIÓN 1: No necesitamos el SDK de Vercel aquí directamente ---
+// La lógica de Vercel para dominios se maneja de forma diferente ahora.
 
 const prisma = global.prisma || new PrismaClient();
 if (process.env.NODE_ENV !== 'production') global.prisma = prisma;
@@ -15,13 +17,12 @@ const app = express();
 const allowedOrigins = [
   'https://gestularia.com',
   'https://www.gestularia.com',
-  'http://localhost:3000' // desarrollo local
+  'http://localhost:3000'
 ];
 
 const corsOptions = {
   origin: function(origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -47,20 +48,21 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// --- CLIENTE VERCEL ---
-const vercel = new VercelClient({ token: process.env.VERCEL_TOKEN });
 
 // ------------------------ RUTAS DE AUTENTICACIÓN ------------------------
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'Email y contraseña son requeridos.' });
-
+    if (!email || !password) {
+        return res.status(400).json({ error: 'Email y contraseña son requeridos.' });
+    }
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({ data: { email, password: hashedPassword } });
     res.status(201).json({ id: user.id, email: user.email });
   } catch (error) {
-    if (error.code === 'P2002') return res.status(409).json({ error: 'El email ya está en uso.' });
+    if (error.code === 'P2002') {
+        return res.status(409).json({ error: 'El email ya está en uso.' });
+    }
     console.error("ERROR REGISTER:", error);
     res.status(500).json({ error: 'No se pudo registrar el usuario.' });
   }
@@ -70,28 +72,37 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || !(await bcrypt.compare(password, user.password))) return res.status(400).json({ error: 'Credenciales inválidas.' });
-
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+        return res.status(401).json({ error: 'Credenciales inválidas.' });
+    }
     const accessToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '1d' });
     res.json({ accessToken });
   } catch (error) {
     console.error("ERROR LOGIN:", error);
-    res.status(500).send();
+    res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
 
 // ------------------------ RUTAS DE TIENDA ------------------------
 app.get('/api/store', authenticateToken, async (req, res) => {
   try {
-    const store = await prisma.store.findUnique({ where: { userId: req.user.userId }, include: { products: true } });
-    if (store) res.json(store);
-    else res.status(404).json({ message: 'El usuario aún no tiene una tienda.' });
+    const store = await prisma.store.findUnique({
+        where: { userId: req.user.userId },
+        include: { products: true }
+    });
+    if (store) {
+        res.json(store);
+    } else {
+        res.status(404).json({ message: 'El usuario aún no tiene una tienda.' });
+    }
   } catch (error) {
+    console.error("ERROR GET STORE:", error);
     res.status(500).json({ error: 'Error al obtener la tienda.' });
   }
 });
 
-// --- CREAR TIENDA Y SUBDOMINIO VERCEL ---
+// --- CORRECCIÓN 2: La lógica para añadir un dominio se mueve al frontend ---
+// El backend ahora solo se encarga de crear la tienda en la base de datos.
 app.post('/api/store', authenticateToken, async (req, res) => {
   try {
     const { name } = req.body;
@@ -107,25 +118,16 @@ app.post('/api/store', authenticateToken, async (req, res) => {
       storeExists = await prisma.store.findUnique({ where: { slug: finalSlug } });
     }
 
-    // --- Crear tienda en BD ---
     const newStore = await prisma.store.create({ data: { name, slug: finalSlug, userId } });
+    
+    // Devolvemos la tienda creada. El frontend se encargará del subdominio.
+    res.status(201).json(newStore);
 
-    // --- Crear alias/subdominio en Vercel ---
-    const aliasDomain = `${finalSlug}.gestularia.com`;
-    try {
-      await vercel.projects.createAlias({
-        projectId: process.env.VERCEL_PROJECT_ID, // reemplaza con tu Project ID
-        alias: aliasDomain
-      });
-      console.log(`Subdominio creado: ${aliasDomain}`);
-    } catch (vercelError) {
-      console.error("Error creando subdominio en Vercel:", vercelError);
-    }
-
-    res.status(201).json({ ...newStore, subdomain: aliasDomain });
   } catch (error) {
-    if (error.code === 'P2002') return res.status(409).json({ error: 'Este usuario ya tiene una tienda.' });
     console.error("ERROR CREATE STORE:", error);
+    if (error.code === 'P2002') {
+        return res.status(409).json({ error: 'Este usuario ya tiene una tienda.' });
+    }
     res.status(500).json({ error: 'No se pudo crear la tienda.' });
   }
 });
@@ -161,12 +163,12 @@ app.put('/api/store/template', authenticateToken, async (req, res) => {
 
 // ------------------------ RUTAS DE PRODUCTOS ------------------------
 app.post('/api/products', authenticateToken, async (req, res) => {
-  const { name, price, imageUrl, storeId } = req.body;
-
-  const store = await prisma.store.findUnique({ where: { id: storeId } });
-  if (!store || store.userId !== req.user.userId) return res.status(403).json({ error: 'No tienes permiso.' });
-
   try {
+    const { name, price, imageUrl, storeId } = req.body;
+    const store = await prisma.store.findUnique({ where: { id: storeId } });
+    if (!store || store.userId !== req.user.userId) {
+        return res.status(403).json({ error: 'No tienes permiso para agregar productos a esta tienda.' });
+    }
     const product = await prisma.product.create({ data: { name, price, imageUrl, storeId } });
     res.status(201).json(product);
   } catch (error) {
@@ -176,12 +178,14 @@ app.post('/api/products', authenticateToken, async (req, res) => {
 
 app.delete('/api/products/:productId', authenticateToken, async (req, res) => {
   const { productId } = req.params;
-
   try {
     const product = await prisma.product.findUnique({ where: { id: productId }, include: { store: true } });
-    if (!product) return res.status(404).json({ error: 'Producto no encontrado.' });
-    if (product.store.userId !== req.user.userId) return res.status(403).json({ error: 'No tienes permiso para eliminar este producto.' });
-
+    if (!product) {
+        return res.status(404).json({ error: 'Producto no encontrado.' });
+    }
+    if (product.store.userId !== req.user.userId) {
+        return res.status(403).json({ error: 'No tienes permiso para eliminar este producto.' });
+    }
     await prisma.product.delete({ where: { id: productId } });
     res.status(204).send();
   } catch (error) {
@@ -193,19 +197,20 @@ app.delete('/api/products/:productId', authenticateToken, async (req, res) => {
 app.get('/api/tiendas/:slug', async (req, res) => {
   try {
     const { slug } = req.params;
-
     const store = await prisma.store.findFirst({
       where: { slug, status: 'BUILT' },
       include: { products: true }
     });
-
-    if (store) res.json(store);
-    else res.status(404).json({ error: 'Tienda no encontrada o no publicada.' });
+    if (store) {
+        res.json(store);
+    } else {
+        res.status(404).json({ error: 'Tienda no encontrada o no publicada.' });
+    }
   } catch (error) {
     console.error("ERROR GET TIENDA:", error);
     res.status(500).json({ error: 'Error al obtener la tienda.' });
   }
 });
 
-// ------------------------ EXPORT PARA SERVERLESS ----
+// ------------------------ EXPORT PARA SERVERLESS ------------------------
 module.exports = app;

@@ -14,7 +14,7 @@
   "license": "ISC",
   "dependencies": {
     "@prisma/client": "^5.15.0",
-    "@vercel/client": "^15.3.14",
+    "@vercel/sdk": "^1.10.6",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
